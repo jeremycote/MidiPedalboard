@@ -12,13 +12,14 @@
 #define PROTOCOL_VERSION 2
 
 // Packet types
-#define CMD_INVITATION "IN"
-#define CMD_ACCEPT "OK"
-#define CMD_REJECT "NO"
-#define CMD_EXIT "BY"
+#define CMD_INVITATION (('I' << 8) | ('N'))
+#define CMD_ACCEPT (('O' << 8) | ('K'))
+#define CMD_REJECT (('N' << 8) | ('O'))
+#define CMD_EXIT (('B' << 8) | ('Y'))
+#define CMD_CLOCK (('C' << 8) | ('K'))
 
 typedef struct {
-    uint16_t padding;          // Two bytes of padding as 0xFFFF
+    uint16_t signature;          // Two bytes of padding as 0xFFFF
     uint16_t command;          // Two ASCII chars
     uint32_t protocol_version; // Should be 2
     uint32_t initiator_token;  // Random number from initiator
@@ -77,6 +78,9 @@ bool setup_midi_server() {
         return false;
     }
 
+    int flags = lwip_fcntl(session.control_socket, F_GETFL, 0);
+    lwip_fcntl(session.control_socket, F_SETFL, flags | O_NONBLOCK);
+
     // Create MIDI socket
     session.midi_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (session.midi_socket < 0) {
@@ -84,6 +88,9 @@ bool setup_midi_server() {
         close(session.control_socket);
         return false;
     }
+
+    flags = lwip_fcntl(session.midi_socket, F_GETFL, 0);
+    lwip_fcntl(session.midi_socket, F_SETFL, flags | O_NONBLOCK);
 
     // Bind control socket
     struct sockaddr_in control_bind = {
@@ -117,9 +124,8 @@ bool setup_midi_server() {
 void send_invitation_response(int sock, struct sockaddr_in *addr, uint32_t initiator_token, bool accept) {
     printf("Sending invitation response. Accept=%d\n", accept);
     exchange_packet_t response = {0};
-    response.padding = 0xFFFF;
-    response.command = htons(accept ? ((CMD_ACCEPT[0] << 8) | CMD_ACCEPT[1])
-                               : ((CMD_REJECT[0] << 8) | CMD_REJECT[1]));
+    response.signature = 0xFFFF;
+    response.command = htons(accept ? CMD_ACCEPT : CMD_REJECT);
     response.protocol_version = PROTOCOL_VERSION << 24;
     response.initiator_token = initiator_token;  // Use initiator's token
     response.ssrc = htonl(session.ssrc);
@@ -132,64 +138,75 @@ void send_invitation_response(int sock, struct sockaddr_in *addr, uint32_t initi
            (struct sockaddr*)addr, sizeof(*addr));
 }
 
+static bool is_exchange_packet(const uint8_t *buffer) {
+    return (buffer[0] & 0xFF) && (buffer[1] & 0xFF);
+}
+
+static void handle_invitation(exchange_packet_t* packet, struct sockaddr_in sender_addr) {
+    printf("Received invitation from %s\n", packet->name);
+
+    // Store initiator information
+    session.initiator_token = ntohl(packet->initiator_token);
+    session.remote_ssrc = ntohl(packet->ssrc);
+    session.control_addr = sender_addr;
+
+    printf("Received invitation with token %lu\n", session.initiator_token);
+
+    // Send acceptance on control port
+    send_invitation_response(session.control_socket, &sender_addr,
+                             packet->initiator_token, true);
+
+    session.connected = true;
+    printf("Connection established with %s\n", packet->name);
+}
+
+static void handle_exchange_packet(exchange_packet_t* packet, struct sockaddr_in sender_addr) {
+    printf("Received exchange packet from %s:%d\n", inet_ntoa(sender_addr.sin_addr), ntohs(sender_addr.sin_port));
+
+    uint16_t command = ntohs(packet->command);
+    printf("Received command: %c%c\n", command >> 8, command);
+
+    switch (command) {
+        case CMD_INVITATION: {
+            handle_invitation(packet, sender_addr);
+            return;
+        }
+        case CMD_CLOCK: {
+            // TODO: Implement CK command
+            return;
+        }
+        default: {
+            printf("Unknown exchange packet received. Ignoring %c%c.\n", command >> 8, command);
+            return;
+        }
+    }
+}
+
 void handle_incoming_packets(uint8_t *buffer, uint16_t buffer_len, struct sockaddr_in sender_addr, socklen_t sender_len) {
     // Check control socket
     int received = recvfrom(session.control_socket, buffer, buffer_len, 0,
                             (struct sockaddr*)&sender_addr, &sender_len);
-
     if (received > 0) {
+        if (!is_exchange_packet(buffer)) {
+            printf("Control Socket only accepts exchange packets\n");
+            goto check_midi;
+        }
 
-        buffer[buffer_len] = '\0'; // Null-terminate for printing
-
-        printf("Received exchange packet from %s:%d - %s\n",
-               inet_ntoa(sender_addr.sin_addr), ntohs(sender_addr.sin_port), buffer);
-
+        // Interpret the buffer as an exchange packet
         exchange_packet_t* packet = (exchange_packet_t*)buffer;
-
-        uint16_t padding = ntohs(packet->padding);
-        if (padding != 0xFFFF) {
-            printf("Invalid start to exchange packet\n");
-            goto end;
-        }
-
-        uint16_t command = ntohs(packet->command);
-
-        printf("Received command: %c%c token: %lu\n", command >> 8, command, ntohl(packet->initiator_token));
-
-        // Handle invitation
-        if (command == ((CMD_INVITATION[0] << 8) | CMD_INVITATION[1])) {
-            printf("Received invitation from %s\n", packet->name);
-
-            // Store initiator information
-            session.initiator_token = ntohl(packet->initiator_token);
-            session.remote_ssrc = ntohl(packet->ssrc);
-            session.control_addr = sender_addr;
-
-            printf("Received invitation with token %lu\n", session.initiator_token);
-
-            // Send acceptance on control port
-            send_invitation_response(session.control_socket, &sender_addr,
-                                     packet->initiator_token, true);
-
-            session.connected = true;
-            printf("Connection established with %s\n", packet->name);
-        }
+        handle_exchange_packet(packet, sender_addr);
     }
 
-    // Check MIDI socket for actual MIDI messages
-//    received = recvfrom(session.midi_socket, buffer, sizeof(buffer), 0,
-//                        (struct sockaddr*)&sender_addr, &sender_len);
-//
-//    if (received > 0 && session.connected) {
-//        // First byte of MIDI message is in buffer[12] due to RTP header
-//        uint8_t status = buffer[12];
-//        uint8_t data1 = buffer[13];
-//        uint8_t data2 = buffer[14];
-//
-//        printf("Received MIDI message: status=0x%02X, data1=0x%02X, data2=0x%02X\n",
-//               status, data1, data2);
-//    }
+    check_midi:
+        // Check MIDI socket for actual MIDI messages
+        received = recvfrom(session.midi_socket, buffer, sizeof(buffer), 0,
+                            (struct sockaddr*)&sender_addr, &sender_len);
 
-    end:
-        return;
+        if (received > 0 && session.connected) {
+            if (is_exchange_packet(buffer)) {
+                exchange_packet_t* packet = (exchange_packet_t*)buffer;
+                handle_exchange_packet(packet, sender_addr);
+                return;
+            }
+        }
 }
