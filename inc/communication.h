@@ -19,8 +19,6 @@ bool setup_wifi();
  */
 bool setup_midi_server();
 
-void send_invitation_response(int sock, struct sockaddr_in *addr, uint32_t initiator_token, bool accept);
-
-void handle_incoming_packets(uint8_t *buffer, uint16_t buffer_len, struct sockaddr_in sender_addr, socklen_t sender_len);
+void handle_incoming_packets();
 
 #endif //MIDICONTROLLER_COMMUNICATION_H

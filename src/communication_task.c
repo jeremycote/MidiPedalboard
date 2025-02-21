@@ -26,10 +26,6 @@ void start_communication_task() {
     vTaskCoreAffinitySet(task, 0b11); // Wifi can only run on core 0
 }
 
-uint8_t buffer[1024];
-struct sockaddr_in sender_addr;
-socklen_t sender_len = sizeof(sender_addr);
-
 _Noreturn void communication_task() {
     printf("Setup Wifi\n");
 
@@ -47,7 +43,7 @@ _Noreturn void communication_task() {
 
     while (1) {
         // TODO: This only answers the first connection request
-        handle_incoming_packets(buffer, 1024, sender_addr, sender_len);
+        handle_incoming_packets();
         vTaskDelay(1);
     }
 }
