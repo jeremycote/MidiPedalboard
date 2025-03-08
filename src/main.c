@@ -6,14 +6,15 @@
 #include <FreeRTOS.h>
 #include <task.h>
 #include <pico/printf.h>
-#include <pico/cyw43_arch.h>
 #include <pico/stdio_usb.h>
 
 #include "communication_task.h"
+#include "adc_task.h"
 
 int main() {
     stdio_init_all();
 
+    // TODO: Remove this for production. Used for debugging.
     while (!stdio_usb_connected()) {
 
     }
@@ -22,6 +23,7 @@ int main() {
 
     // Start tasks
     start_communication_task();
+    start_adc_task();
 
     // Hand off control to FreeRTOS scheduler
     vTaskStartScheduler();

@@ -288,6 +288,7 @@ static void handle_exchange_packet(int socket, exchange_packet_t* packet, struct
     }
 }
 
+// TODO: Make this interface more generic
 void send_midi(struct sockaddr_in *sender_addr) {
     printf("Sending midi command.\n");
     printf("Current time: %llu\n", get_timestamp());
@@ -363,12 +364,4 @@ void handle_incoming_packets() {
 
             printf("Updated sequence number from host: %d\n", session.sequence_number_host);
         }
-
-    static uint16_t count = 0;
-    if (session.connected) {
-        if (count++ > 10000) {
-            send_midi(&sender_addr);
-            count = 0;
-        }
-    }
 }
