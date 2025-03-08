@@ -2,11 +2,11 @@
 // Created by Jeremy Cote on 2025-03-08.
 //
 
-#include "adc.h"
+#include "analog_signals.h"
 
 #include <hardware/gpio.h>
 #include <hardware/i2c.h>
-#include <hardware/dma.h>
+#include <hardware/adc.h>
 
 // Address is already shifted left
 #define ADC_ADDRESS (0x90)
@@ -16,6 +16,8 @@
 
 // TODO: Select correct pin
 #define CONVERSION_READY_PIN 2
+#define ADC_IN4_PIN 0
+#define ADC_IN5_PIN 0
 
 #define TIMEOUT 1000
 
@@ -69,7 +71,8 @@ static void conversion_complete() {
     }
 }
 
-bool adc_init() {
+bool analog_init() {
+    // Setup external ADC
     i2c_init(I2C, 400 * 1000);
     gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
@@ -85,6 +88,15 @@ bool adc_init() {
     gpio_set_dir(CONVERSION_READY_PIN, GPIO_IN);
     gpio_pull_up(CONVERSION_READY_PIN);
     gpio_set_irq_enabled_with_callback(CONVERSION_READY_PIN, GPIO_IRQ_EDGE_RISE, true, &conversion_complete);
+
+    // Setup internal ADC
+    adc_init();
+
+    // Make sure GPIO is high-impedance, no pullups etc
+    adc_gpio_init(ADC_IN4_PIN);
+    adc_gpio_init(ADC_IN5_PIN);
+
+    return true;
 }
 
 static bool ads1115_start_conversion(adc_input_t input) {
@@ -111,7 +123,12 @@ static bool ads1115_start_conversion(adc_input_t input) {
     return write_register(CONFIG_REGISTER, config);
 }
 
-bool adc_start_conversion(adc_input_t input) {
+static void internal_adc_start_conversion(adc_input_t input) {
+    adc_select_input(input - 4);
+    adc_results[input] = adc_read();
+}
+
+bool analog_start_conversion(adc_input_t input) {
     if (state != ADC_IDLE) {
         return false;
     }
@@ -123,27 +140,24 @@ bool adc_start_conversion(adc_input_t input) {
 
     if (input <= 3) {
         // Use external ADC (ads1115)
-        started_conversion = ads1115_start_conversion(input);
+        if (!ads1115_start_conversion(input)) {
+            return false;
+        }
+
+        state = ADC_CONVERTING;
     } else {
         // Use internal ADC
-        // TODO: Implement internal ADC logic
+        internal_adc_start_conversion(input);
     }
-
-    if (!started_conversion) {
-        return false;
-    }
-
-    // Update state machine
-    state = ADC_CONVERTING;
 
     return true;
 }
 
-bool adc_conversion_complete() {
+bool analog_conversion_complete() {
     return state == ADC_COMPLETE;
 }
 
-bool adc_read_conversion() {
+bool analog_read_conversion() {
     if (!read_register(CONVERSION_REGISTER, &adc_results[current_channel])) {
         return false;
     }
@@ -152,6 +166,11 @@ bool adc_read_conversion() {
     return true;
 }
 
-uint8_t adc_get(adc_input_t input) {
-    return adc_results[input] * 255 / 0xFFFF;
+uint8_t analog_get(adc_input_t input) {
+    if (input <= 3)
+        // External adc is 16 bits
+        return adc_results[input] * 255 / 0xFFFF;
+    else
+        // Internal adc is 12 bits
+        return adc_results[input] * 255 / 0x0FFF;
 }

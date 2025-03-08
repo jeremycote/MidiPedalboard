@@ -8,7 +8,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "adc.h"
+#include "analog_signals.h"
 
 #define ADC_TASK_STACK_SIZE 1024
 
@@ -25,7 +25,7 @@ void start_adc_task() {
 
 _Noreturn void adc_task() {
 
-    while (!adc_init()) {
+    while (!analog_init()) {
         printf("Failed to initialize ADC\n");
     }
 
@@ -35,32 +35,35 @@ _Noreturn void adc_task() {
     while (1) {
         printf("Reading ADC %u\n", current_input);
 
-        while (!adc_start_conversion(current_input) && timeout++ < 3) {
+        while (!analog_start_conversion(current_input) && timeout++ < 3) {
             vTaskDelay(5);
         }
 
-        if (timeout >= 3)
-            goto next;
+        // The last two inputs are blocking, so skip these steps
+        if (current_input <= 3) {
+            if (timeout >= 3)
+                goto next;
 
-        timeout = 0;
-        vTaskDelay(1);
+            timeout = 0;
+            vTaskDelay(1);
 
-        while (!adc_conversion_complete() && timeout++ < 10) {
-            vTaskDelay(5);
+            while (!analog_conversion_complete() && timeout++ < 10) {
+                vTaskDelay(5);
+            }
+
+            if (timeout >= 10)
+                goto next;
+
+            timeout = 0;
+            while (!analog_read_conversion() && timeout++ < 3) {
+                vTaskDelay(5);
+            }
+
+            if (timeout >= 3)
+                goto next;
         }
 
-        if (timeout >= 10)
-            goto next;
-
-        timeout = 0;
-        while (!adc_read_conversion() && timeout++ < 3) {
-            vTaskDelay(5);
-        }
-
-        if (timeout >= 3)
-            goto next;
-
-        printf("ADC %u value: %u\n", current_input, adc_get(current_input));
+        printf("ADC %u value: %u\n", current_input, analog_get(current_input));
 
         next:
             timeout = 0;

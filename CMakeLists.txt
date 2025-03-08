@@ -34,6 +34,7 @@ target_link_libraries(MidiController
         pico_mbedtls
         hardware_i2c
         hardware_gpio
+        hardware_adc
         FreeRTOS-Kernel-Heap4
 )
 
