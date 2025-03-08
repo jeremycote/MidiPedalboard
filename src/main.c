@@ -33,8 +33,9 @@ int main() {
     while (1);
 }
 
-void vApplicationStackOverflowHook(TaskHandle_t xTask, char * pcTaskName ) {
-    while(1) {
-        // TODO: Implement visual feedback of stack overflow
-    }
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+    // Handle the stack overflow here.
+    printf("Stack overflow detected in task: %s\n", pcTaskName);
+    taskDISABLE_INTERRUPTS();
+    for(;;);
 }

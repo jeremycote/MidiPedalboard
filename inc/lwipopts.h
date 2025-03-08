@@ -40,6 +40,14 @@
 #define LWIP_TCP                    1
 #define LWIP_UDP                    1
 #define LWIP_DNS                    1
+
+// Required to use MDNS
+#define LWIP_IGMP                   1
+#define LWIP_MDNS_RESPONDER         1
+#define MEMP_NUM_SYS_TIMEOUT         (LWIP_NUM_SYS_TIMEOUT_INTERNAL+3)
+#define LWIP_NUM_NETIF_CLIENT_DATA  1
+#define MDNS_MAX_SERVICES           1
+
 #define LWIP_TCP_KEEPALIVE          1
 #define LWIP_NETIF_TX_SINGLE_PBUF   1
 #define DHCP_DOES_ARP_CHECK         0

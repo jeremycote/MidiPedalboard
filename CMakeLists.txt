@@ -30,6 +30,7 @@ target_link_libraries(MidiController
         pico_stdlib
         pico_cyw43_arch_lwip_sys_freertos
         pico_lwip_mbedtls
+        pico_lwip_mdns
         pico_mbedtls
         hardware_i2c
         hardware_gpio

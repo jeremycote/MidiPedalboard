@@ -1,5 +1,6 @@
 #include "pico/cyw43_arch.h"
 #include "lwip/sockets.h"
+#include "lwip/apps/mdns.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>
@@ -175,6 +176,22 @@ bool setup_midi_server() {
     printf("MIDI server listening on ports %d (control) and %d (MIDI)\n",
            CONTROL_PORT, MIDI_PORT);
     return true;
+}
+
+bool setup_bonjour() {
+    printf("Starting bonjour service\n");
+
+    mdns_resp_init();
+
+    printf("Adding network interface\n");
+
+    if (mdns_resp_add_netif(cyw43_state.netif, "pico") != ERR_OK) {
+        printf("Failed to add netif\n");
+        return false;
+    };
+
+    printf("Adding service\n");
+    return mdns_resp_add_service(cyw43_state.netif, "Pico MIDI", "_apple-midi", DNSSD_PROTO_UDP, 5004, NULL, NULL) == ERR_OK;
 }
 
 // Helper function to get current timestamp in 100 microsecond units

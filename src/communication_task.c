@@ -30,12 +30,19 @@ _Noreturn void communication_task() {
     printf("Setup Wifi\n");
 
     while (!setup_wifi()) {
+        printf("Failed to setup wifi. Trying again in 500ms\n");
         vTaskDelay(500);
     }
 
     printf("Setup midi server\n");
 
     while (!setup_midi_server()) {
+        printf("Failed to setup midi server. Trying again in 500ms\n");
+        vTaskDelay(500);
+    }
+
+    while (!setup_bonjour()) {
+        printf("Failed to setup bonjour. Trying again in 500ms\n");
         vTaskDelay(500);
     }
 
