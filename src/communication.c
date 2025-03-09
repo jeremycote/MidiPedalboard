@@ -107,6 +107,10 @@ bool setup_wifi() {
     printf("Wifi initialized\n");
     cyw43_arch_enable_sta_mode();
 
+    return true;
+}
+
+bool connect_wifi() {
     printf("Connecting to Wi-Fi...\n");
     if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, CYW43_AUTH_WPA2_AES_PSK, 10000)) {
         printf("Wi-Fi connection failed\n");
@@ -185,13 +189,13 @@ bool setup_bonjour() {
 
     printf("Adding network interface\n");
 
-    if (mdns_resp_add_netif(cyw43_state.netif, "pico") != ERR_OK) {
+    if (mdns_resp_add_netif(cyw43_state.netif, "pedal_controller") != ERR_OK) {
         printf("Failed to add netif\n");
         return false;
     };
 
     printf("Adding service\n");
-    return mdns_resp_add_service(cyw43_state.netif, "Pico MIDI", "_apple-midi", DNSSD_PROTO_UDP, 5004, NULL, NULL) == ERR_OK;
+    return mdns_resp_add_service(cyw43_state.netif, "Pedal Controller", "_apple-midi", DNSSD_PROTO_UDP, 5004, NULL, NULL) >= 0;
 }
 
 // Helper function to get current timestamp in 100 microsecond units
@@ -239,6 +243,7 @@ static void handle_invitation(int socket, exchange_packet_t* packet, struct sock
     printf("Connection established with %s\n", packet->name);
 }
 
+// TODO: Better synchronization is required for a stable experience
 static void handle_clock(timestamp_packet_t* packet, struct sockaddr_in *sender_addr) {
     printf("Handling clock\n");
 
@@ -263,19 +268,19 @@ static void handle_clock(timestamp_packet_t* packet, struct sockaddr_in *sender_
            (struct sockaddr*)sender_addr, sizeof(*sender_addr));
 }
 
-static void handle_exchange_packet(int socket, exchange_packet_t* packet, struct sockaddr_in *sender_addr) {
-    printf("Received exchange packet from %s:%d\n", inet_ntoa(sender_addr->sin_addr), ntohs(sender_addr->sin_port));
+static void handle_exchange_packet(int socket, exchange_packet_t* packet) {
+    printf("Received exchange packet from %s:%d\n", inet_ntoa(sender_addr.sin_addr), ntohs(sender_addr.sin_port));
 
     uint16_t command = ntohs(packet->command);
     printf("Received command: %c%c\n", command >> 8, command);
 
     switch (command) {
         case CMD_INVITATION: {
-            handle_invitation(socket, packet, sender_addr);
+            handle_invitation(socket, packet, &sender_addr);
             return;
         }
         case CMD_CLOCK: {
-            handle_clock((timestamp_packet_t*)packet, sender_addr);
+            handle_clock((timestamp_packet_t*)packet, &sender_addr);
             return;
         }
         case CMD_RECEIVER_FEEDBACK: {
@@ -288,8 +293,7 @@ static void handle_exchange_packet(int socket, exchange_packet_t* packet, struct
     }
 }
 
-// TODO: Make this interface more generic
-void send_midi(struct sockaddr_in *sender_addr) {
+void send_midi_control_change(uint8_t control, uint8_t value) {
     printf("Sending midi command.\n");
     printf("Current time: %llu\n", get_timestamp());
     uint8_t command[128];
@@ -300,7 +304,7 @@ void send_midi(struct sockaddr_in *sender_addr) {
     header->v = 2;
     header->p = 0;
     header->x = 0;
-    header->cc = 0;
+    header->cc = 0; // chanel 0
     header->m = 0;
     header->pt = 0x61;
 
@@ -315,12 +319,11 @@ void send_midi(struct sockaddr_in *sender_addr) {
 
     command_section->len = 3;
 
-    command_section->command_list[0] = 0x90;
-    command_section->command_list[1] = 60;
-    command_section->command_list[2] = 0x7F;
+    command_section->command_list[0] = 0xB0;
+    command_section->command_list[1] = control;
+    command_section->command_list[2] = value;
 
-    sendto(session.midi_socket, command, 12 + 4, 0,
-           (struct sockaddr*)sender_addr, sizeof(*sender_addr));
+    sendto(session.midi_socket, command, 12 + 4, 0, (struct sockaddr*) &sender_addr, sizeof(sender_addr));
 }
 
 void handle_incoming_packets() {
@@ -338,7 +341,7 @@ void handle_incoming_packets() {
 
             // Interpret the buffer as an exchange packet
             exchange_packet_t* packet = (exchange_packet_t*)buffer;
-            handle_exchange_packet(session.control_socket, packet, &sender_addr);
+            handle_exchange_packet(session.control_socket, packet);
         }
 
     check_midi:
@@ -349,7 +352,7 @@ void handle_incoming_packets() {
         if (received > 0 && session.connected) {
             if (is_exchange_packet(buffer)) {
                 exchange_packet_t* packet = (exchange_packet_t*)buffer;
-                handle_exchange_packet(session.midi_socket, packet, &sender_addr);
+                handle_exchange_packet(session.midi_socket, packet);
                 return;
             }
 

@@ -8,10 +8,16 @@
 #include <stdbool.h>
 
 /**
- * Setup Wi-Fi and connect to network.
- * @return true if connected to network.
+ * Setup Wi-Fi.
+ * @return true if setup
  */
 bool setup_wifi();
+
+/**
+ * Connect to Wi-Fi network
+ * @return
+ */
+bool connect_wifi();
 
 /**
  * Open UDP Socket for RTP-MIDI communication
@@ -26,6 +32,8 @@ bool setup_midi_server();
  * @return true if session was created successfully
  */
 bool setup_bonjour();
+
+void send_midi_control_change(uint8_t control, uint8_t value);
 
 void handle_incoming_packets();
 
