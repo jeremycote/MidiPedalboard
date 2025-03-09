@@ -44,7 +44,6 @@
 // Required to use MDNS
 #define LWIP_IGMP                   1
 #define LWIP_MDNS_RESPONDER         1
-#define MEMP_NUM_SYS_TIMEOUT         (LWIP_NUM_SYS_TIMEOUT_INTERNAL+3)
 #define LWIP_NUM_NETIF_CLIENT_DATA  1
 #define MDNS_MAX_SERVICES           1
 
@@ -101,7 +100,8 @@
 #define ALTCP_MBEDTLS_DEBUG  LWIP_DBG_ON
 
 #if !NO_SYS
-#define TCPIP_THREAD_STACKSIZE 1024
+// It's important to have at least 2048 for MDNS to work
+#define TCPIP_THREAD_STACKSIZE 2048
 #define DEFAULT_THREAD_STACKSIZE 2048
 #define DEFAULT_RAW_RECVMBOX_SIZE 8
 #define TCPIP_MBOX_SIZE 8
