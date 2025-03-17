@@ -16,6 +16,14 @@ project(MidiController C CXX ASM)
 # Must initialize Pico SDK before creating executable
 pico_sdk_init()
 
+# Set C/C++ standards
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+
+# Include pico-ssd1306 library
+set(PICO_SSD1306_DIR "${CMAKE_CURRENT_LIST_DIR}/lib/pico-ssd1306")
+include(pico-ssd1306.cmake)
+
 file(GLOB SOURCES
         src/*.c
 )
@@ -24,6 +32,7 @@ add_executable(MidiController ${SOURCES})
 
 target_include_directories(MidiController PUBLIC
         inc
+        ${PICO_SSD1306_DIR}/include
 )
 # Link against the SDK
 target_link_libraries(MidiController
@@ -36,6 +45,7 @@ target_link_libraries(MidiController
         hardware_gpio
         hardware_adc
         FreeRTOS-Kernel-Heap4
+        pico_ssd1306
 )
 
 # Enable printf stdout to USB
@@ -54,3 +64,15 @@ if(DEFINED ENV{WIFI_SSID} AND DEFINED ENV{WIFI_PASS})
 else()
     message(FATAL_ERROR "Wi-Fi SSID and/or password environment variables are not set.")
 endif()
+
+# Set up files for the release packages
+install(CODE "execute_process(COMMAND $ENV{HOME}/bin/picoDeploy.sh ${CMAKE_CURRENT_BINARY_DIR}/MidiController.elf)")
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/MidiController.uf2
+    DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# Set up CPack
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+set(CPACK_GENERATOR "ZIP" "TGZ")
+include(CPack)
