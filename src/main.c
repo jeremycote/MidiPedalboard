@@ -7,6 +7,8 @@
 #include <task.h>
 #include <pico/printf.h>
 #include <pico/stdio_usb.h>
+#include "hardware/adc.h"
+#include "hardware/gpio.h"
 
 #include "communication_task.h"
 #include "adc_task.h"
@@ -56,6 +58,37 @@ int main() {
     } else {
         printf("OLED Init failed\n");
     }
+
+    // Initialize ADC
+    adc_init();
+    adc_gpio_init(32); // GPIO 32 is ADC1
+    adc_select_input(1); // Select ADC1
+
+    char buffer[32];
+
+    while (true) {
+        uint16_t raw = adc_read(); // 12-bit ADC result (0-4095)
+
+
+        
+        // Format string for OLED
+        snprintf(buffer, sizeof(buffer), "Sound level : %d", raw);
+
+        // Clear, draw, and display on OLED
+        ssd1306_clear(&oled);
+        if (raw>500){
+            ssd1306_draw_string(&oled, 0, 2, 1.5, "SOUND WARNING");
+        } 
+        else{
+            ssd1306_draw_string(&oled, 0, 2, 1.5, "Sound good");
+        }
+        
+        ssd1306_draw_string(&oled, 0, 15, 1, buffer);
+        ssd1306_show(&oled);
+
+        sleep_ms(200); // Delay for readability
+    }
+
 
     // Start tasks
     start_communication_task();
