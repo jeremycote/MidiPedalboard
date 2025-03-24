@@ -24,40 +24,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(PICO_SSD1306_DIR "${CMAKE_CURRENT_LIST_DIR}/lib/pico-ssd1306")
 include(pico-ssd1306.cmake)
 
-file(GLOB SOURCES
-        src/*.c
-)
+add_subdirectory(src)
 
-add_executable(MidiController ${SOURCES})
-
-target_include_directories(MidiController PUBLIC
-        inc
-        ${PICO_SSD1306_DIR}/include
-)
-# Link against the SDK
-target_link_libraries(MidiController
-        pico_stdlib
-        pico_cyw43_arch_lwip_sys_freertos
-        pico_lwip_mbedtls
-        pico_lwip_mdns
-        pico_mbedtls
-        hardware_i2c
-        hardware_gpio
-        hardware_adc
-        FreeRTOS-Kernel-Heap4
-        pico_ssd1306
-)
-
-# Enable printf stdout to USB
-pico_enable_stdio_usb(MidiController 1)
-
-# Enable printf stdout to UART pins 0 and 1
-pico_enable_stdio_uart(MidiController 1)
-
-# Enable the SDK configuration
-pico_add_extra_outputs(MidiController)
-
-# Get Wi-Fi SSID and password from environment variables and define them
+# Wi-Fi config
 if(DEFINED ENV{WIFI_SSID} AND DEFINED ENV{WIFI_PASS})
     message(STATUS "Using Wi-Fi SSID: $ENV{WIFI_SSID}")
     add_definitions(-DWIFI_SSID="$ENV{WIFI_SSID}" -DWIFI_PASS="$ENV{WIFI_PASS}")
@@ -65,14 +34,14 @@ else()
     message(FATAL_ERROR "Wi-Fi SSID and/or password environment variables are not set.")
 endif()
 
-# Set up files for the release packages
+# Deploy script (optional)
 install(CODE "execute_process(COMMAND $ENV{HOME}/bin/picoDeploy.sh ${CMAKE_CURRENT_BINARY_DIR}/MidiController.elf)")
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/MidiController.uf2
     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# Set up CPack
+# Packaging
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
 set(CPACK_GENERATOR "ZIP" "TGZ")
 include(CPack)
