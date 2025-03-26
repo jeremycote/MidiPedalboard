@@ -10,6 +10,12 @@
 
 #include "analog_signals.h"
 
+#include "pico/stdlib.h"
+#include <stdio.h>
+#include <hardware/adc.h>
+
+#define DELAY 500 // in milliseconds
+
 #define ADC_TASK_STACK_SIZE 1024
 
 StaticTask_t adc_task_buffer;
@@ -22,54 +28,26 @@ void start_adc_task() {
     TaskHandle_t task = xTaskCreateStatic(adc_task, "ADC", ADC_TASK_STACK_SIZE, NULL, 1, adc_task_stack,
                       &adc_task_buffer);
 
-    vTaskCoreAffinitySet(task, 0b10);
+    vTaskCoreAffinitySet(task, 0b01);
 }
 
 _Noreturn void adc_task() {
+    analog_init();
 
-    while (!analog_init()) {
-        printf("Failed to initialize ADC\n");
-    }
-
-    uint8_t timeout = 0;
-    adc_input_t current_input = ADC_IN0;
-
-    while (1) {
-//        printf("Reading ADC %u\n", current_input);
-
-        while (!analog_start_conversion(current_input) && timeout++ < 3) {
-            vTaskDelay(5);
-        }
-
-        // The last two inputs are blocking, so skip these steps
-        if (current_input <= 3) {
-            if (timeout >= 3)
-                goto next;
-
-            timeout = 0;
-            vTaskDelay(1);
-
-            while (!analog_conversion_complete() && timeout++ < 10) {
-                vTaskDelay(5);
-            }
-
-            if (timeout >= 10)
-                goto next;
-
-            timeout = 0;
-            while (!analog_read_conversion() && timeout++ < 3) {
-                vTaskDelay(5);
-            }
-
-            if (timeout >= 3)
-                goto next;
-        }
-
-//        printf("ADC %u value: %u\n", current_input, analog_get(current_input));
-
-        next:
-            timeout = 0;
-            current_input = (current_input + 1) % 6;
+    while (true) {
+        for (int i = 0; i < 6; i++) {
+            analog_read(i);
             vTaskDelay(10);
+        }
+
+//        printf(
+//                "ADC\n1) %u\n2) %u\n3) %u\n4) %u\n5) %u\n6) %u\n",
+//                analog_get(0),
+//                analog_get(1),
+//                analog_get(2),
+//                analog_get(3),
+//                analog_get(4),
+//                analog_get(5)
+//        );
     }
 }

@@ -3,6 +3,7 @@
 #include "lwip/apps/mdns.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "buttons.h"
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -99,7 +100,8 @@ static struct sockaddr_in sender_addr;
 static socklen_t sender_len = sizeof(sender_addr);
 
 bool setup_wifi() {
-    if (cyw43_arch_init_with_country(CYW43_COUNTRY_CANADA)) {
+    printf("Init cyw43\n");
+    if (cyw43_arch_init_with_country(CYW43_COUNTRY_CANADA) != 0) {
         printf("Wi-Fi init failed\n");
         return false;
     }
@@ -294,8 +296,8 @@ static void handle_exchange_packet(int socket, exchange_packet_t* packet) {
 }
 
 void send_midi_control_change(uint8_t control, uint8_t value) {
-    printf("Sending midi command.\n");
-    printf("Current time: %llu\n", get_timestamp());
+//    printf("Sending midi command.\n");
+//    printf("Current time: %llu\n", get_timestamp());
     uint8_t command[128];
 
     midi_packet_header_t *header = (midi_packet_header_t*)command;
@@ -366,5 +368,28 @@ void handle_incoming_packets() {
             session.sequence_number_delta = delta > session.sequence_number_delta ? 0 : session.sequence_number_delta - delta;
 
             printf("Updated sequence number from host: %d\n", session.sequence_number_host);
+
+            midi_packet_command_section_t *command_section = (midi_packet_command_section_t*)(buffer + 12);
+//            if (command_section->len < 3) {
+//                printf("Recieved MIDI packet with command length %u\n", command_section->len);
+//                return;
+//            }
+
+            printf("Packet:\n");
+            for (int i = 0; i < 3; i++) {
+                printf("%02x ", *((uint8_t*)command_section + i));
+            }
+
+            printf("\n");
+
+            printf("Received Packet Size: %d\n", received);
+            printf("Command Section: 0x%02x\n", command_section->all);
+            printf("Received MIDI from host: %u %u %u\n", command_section->command_list[0], command_section->command_list[1], command_section->command_list[2]);
+
+            // Control Change received
+            if (command_section->command_list[0] == 0xB0 && command_section->command_list[1] >= 20 && command_section->command_list[1] <= 27) {
+                uint8_t led = command_section->command_list[1] - 20;
+                led_set(led, command_section->command_list[2] > 0);
+            }
         }
 }
