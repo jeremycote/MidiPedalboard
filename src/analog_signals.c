@@ -29,7 +29,7 @@ bool analog_init() {
     return true;
 }
 
-static uint8_t ads1115_read(uint8_t channel) {
+static float ads1115_read(uint8_t channel) {
     if (channel > 3) return 0;
 
     // Config register for single-shot conversion on channel
@@ -53,7 +53,7 @@ static uint8_t ads1115_read(uint8_t channel) {
 
     float v = (result[0] << 8) | result[1];
 
-    return (uint8_t ) (v * 255.0 / 65535.0);
+    return v * 4.096f / 32768.0f;
 }
 
 static uint8_t internal_adc_read(adc_input_t input) {
@@ -65,7 +65,8 @@ static uint8_t internal_adc_read(adc_input_t input) {
 bool analog_read(adc_input_t input) {
     uint8_t result;
     if (input <= 3) {
-        result = ads1115_read(input);
+        float v = ads1115_read(input);
+        printf("Voltage: %f\n", v);
     } else {
         result = internal_adc_read(input);
     }
