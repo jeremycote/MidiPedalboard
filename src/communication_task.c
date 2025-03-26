@@ -69,8 +69,9 @@ _Noreturn void communication_task() {
         vTaskDelay(1);
 
         if (counter++ > 100) {
-            for (int i = 2; i < 3; i++) {
+            for (int i = 3; i < 4; i++) {
                 if (xTaskGetTickCount() > adc_timestamps[i] + 100) {
+                    printf("Pedal: %u\n", analog_get(i));
                     send_midi_control_change(102 + i, analog_get(i));
                     adc_timestamps[i] = xTaskGetTickCount();
                 }

@@ -51,9 +51,9 @@ static float ads1115_read(uint8_t channel) {
     uint8_t result[2];
     i2c_read_blocking(I2C, ADC_ADDRESS, result, 2, false);
 
-    float v = (result[0] << 8) | result[1];
-
-    return v * 4.096f / 32768.0f;
+    int16_t v = (result[0] << 8) | result[1];
+    float converted = ((v * 4.096f / 32768.0f) + 0.58f) / 2.7f;
+    return converted > 1 ? 1 : converted < 0 ? 0 : converted;
 }
 
 static uint8_t internal_adc_read(adc_input_t input) {
@@ -66,7 +66,8 @@ bool analog_read(adc_input_t input) {
     uint8_t result;
     if (input <= 3) {
         float v = ads1115_read(input);
-        printf("Voltage: %f\n", v);
+        result = v * 127;
+        printf("Voltage (%d): %f%%\n", input, v);
     } else {
         result = internal_adc_read(input);
     }

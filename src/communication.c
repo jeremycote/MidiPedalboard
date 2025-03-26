@@ -202,7 +202,7 @@ bool setup_bonjour() {
 
 // Helper function to get current timestamp in 100 microsecond units
 static uint64_t get_timestamp() {
-    absolute_time_t now = get_absolute_time();
+    absolute_time_t now = time_us_64();
     return to_us_since_boot(now) / 100;
 }
 

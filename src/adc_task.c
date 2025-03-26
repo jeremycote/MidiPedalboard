@@ -35,10 +35,11 @@ _Noreturn void adc_task() {
     analog_init();
 
     while (true) {
-        for (int i = 2; i < 3; i++) {
-            analog_read(i);
-            vTaskDelay(10);
-        }
+//        for (int i = 3; i < 4; i++) {
+//            analog_read(1);
+        analog_read(3);
+        vTaskDelay(10);
+//        }
 
 //        printf("ADC: %u\n", analog_get(2));
 
