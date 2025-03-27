@@ -25,10 +25,10 @@ _Noreturn void screen_task();
 
 void start_screen_task() {
     printf("Starting Screen Task\n");
-    TaskHandle_t task = xTaskCreateStatic(screen_task, "Screen", SCREEN_TASK_STACK_SIZE, NULL, 1, screen_task_stack,
-                                          &screen_task_buffer);
+//    TaskHandle_t task = xTaskCreateStatic(screen_task, "Screen", SCREEN_TASK_STACK_SIZE, NULL, 3, screen_task_stack,
+//                                          &screen_task_buffer);
 
-    vTaskCoreAffinitySet(task, 0b01);
+//    vTaskCoreAffinitySet(task, 0b01);
 }
 
 _Noreturn void screen_task() {
@@ -38,17 +38,6 @@ _Noreturn void screen_task() {
 
     printf("Init screen\n");
     bool res = ssd1306_init(&oled, 128, 32, 0x3C, i2c1);
-
-    // If setup is OK, write the test text on the OLED
-    if (res) {
-        printf("Clearing Screen\n");
-        ssd1306_clear(&oled);
-        ssd1306_draw_string(&oled, 0, 2, 2, "Hello!");
-        ssd1306_draw_line(&oled, 2, 25, 80, 25);
-        ssd1306_show(&oled);
-    } else {
-        printf("OLED Init failed\n");
-    }
 
     char buffer[32];
 
@@ -60,7 +49,7 @@ _Noreturn void screen_task() {
 
         // Clear, draw, and display on OLED
         ssd1306_clear(&oled);
-        if (sound > 130) {
+        if (sound > 25) {
             ssd1306_draw_string(&oled, 0, 2, 1.5, "SOUND WARNING");
         } else {
             ssd1306_draw_string(&oled, 0, 2, 1.5, "Sound good");
@@ -69,6 +58,6 @@ _Noreturn void screen_task() {
         ssd1306_draw_string(&oled, 0, 15, 1, buffer);
         ssd1306_show(&oled);
 
-        vTaskDelay(250); // Delay for readability
+        vTaskDelay(200); // Delay for readability
     }
 }

@@ -35,6 +35,10 @@ bool setup_bonjour();
 
 void send_midi_control_change(uint8_t control, uint8_t value);
 
+void send_midi_resync();
+
 void handle_incoming_packets();
+
+bool is_connected();
 
 #endif //MIDICONTROLLER_COMMUNICATION_H

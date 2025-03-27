@@ -26,7 +26,7 @@ void init_buttons() {
 
         gpio_init(LED_PINS[i]);
         gpio_set_dir(LED_PINS[i], GPIO_OUT);
-        gpio_put(LED_PINS[i], 1); // Turn on LEDs initially
+        gpio_put(LED_PINS[i], 0); // Turn off LEDs initially
     }
 
 //    gpio_set_irq_enabled_with_callback(10, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);

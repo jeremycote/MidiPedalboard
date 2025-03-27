@@ -20,9 +20,9 @@ int main() {
     stdio_init_all();
 
     // TODO: Remove this for production. Used for debugging.
-    while (!stdio_usb_connected()) {
-
-    }
+//    while (!stdio_usb_connected()) {
+//
+//    }
 
     i2c_init(i2c1, 400000);
     gpio_pull_up(2);

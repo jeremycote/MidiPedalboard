@@ -60,20 +60,25 @@ _Noreturn void communication_task() {
 
     uint16_t counter = 0;
 
+    uint8_t adc_last[5] = {0,0,0,0,0};
     uint32_t adc_timestamps[5] = {0, 0, 0, 0, 0};
     uint32_t timestamps[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     while (1) {
         // TODO: This only answers the first connection request
         handle_incoming_packets();
-        vTaskDelay(1);
+        vTaskDelay(2);
+
 
         if (counter++ > 100) {
             for (int i = 3; i < 4; i++) {
                 if (xTaskGetTickCount() > adc_timestamps[i] + 100) {
-                    printf("Pedal: %u\n", analog_get(i));
-                    send_midi_control_change(102 + i, analog_get(i));
-                    adc_timestamps[i] = xTaskGetTickCount();
+//                    printf("Pedal: %u\n", analog_get(i));
+                    if (adc_last[i] != analog_get(i)) {
+                        send_midi_control_change(102 + i, analog_get(i));
+                        adc_timestamps[i] = xTaskGetTickCount();
+                        adc_last[i] = analog_get(i);
+                    }
                 }
             }
 
@@ -87,6 +92,8 @@ _Noreturn void communication_task() {
             }
 
             counter = 0;
+        } else if (counter == 90) {
+            send_midi_resync();
         }
     }
 }

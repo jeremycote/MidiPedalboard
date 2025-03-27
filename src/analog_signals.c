@@ -4,6 +4,9 @@
 
 #include "analog_signals.h"
 
+#include <FreeRTOS.h>
+#include "task.h"
+
 #include <hardware/gpio.h>
 #include <hardware/i2c.h>
 #include <hardware/adc.h>
@@ -18,7 +21,11 @@
 #define ADC_IN5_PIN 32
 
 // Global ADC storage
-volatile uint16_t adc_results[6] = {0};  // Stores ADC values for each input
+
+#define SAMPLE_SIZE 5
+
+volatile float adc_results[6 * SAMPLE_SIZE] = {0};  // Stores ADC values for each input
+volatile uint8_t adc_counts[6] = {0};
 
 bool analog_init() {
     // Setup internal ADC
@@ -43,7 +50,7 @@ static float ads1115_read(uint8_t channel) {
     i2c_write_blocking(I2C, ADC_ADDRESS, config_bytes, 3, false);
 
     // Wait for conversion (depends on data rate, ~8ms at 128SPS)
-    sleep_ms(9);
+    vTaskDelay(9);
 
     uint8_t pointer = 0x00; // Conversion register
     i2c_write_blocking(I2C, ADC_ADDRESS, &pointer, 1, true);
@@ -56,27 +63,44 @@ static float ads1115_read(uint8_t channel) {
     return converted > 1 ? 1 : converted < 0 ? 0 : converted;
 }
 
-static uint8_t internal_adc_read(adc_input_t input) {
+static float internal_adc_read(adc_input_t input) {
     adc_select_input(input - 4);
     float raw = (float) adc_read(); // 12-bit ADC result (0–4095)
-    return (uint8_t ) (raw * 255.0 / 4095.0);
+    return raw / 4095.0;
 }
 
 bool analog_read(adc_input_t input) {
-    uint8_t result;
+    float result;
     if (input <= 3) {
-        float v = ads1115_read(input);
-        result = v * 127;
-        printf("Voltage (%d): %f%%\n", input, v);
+        result = ads1115_read(input);
     } else {
         result = internal_adc_read(input);
     }
 
-    adc_results[input] = result;
+    adc_results[input * SAMPLE_SIZE + adc_counts[input]] = result;
+    adc_counts[input] = (adc_counts[input] + 1) % SAMPLE_SIZE;
+
+    // Remove
+    float total = 0;
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
+        total += adc_results[input * SAMPLE_SIZE + i];
+    }
+    total /= SAMPLE_SIZE;
+    printf("Voltage (%d): %f%%\n", input, total);
+    // End remove
 
     return true;
 }
 
 uint8_t analog_get(adc_input_t input) {
-    return adc_results[input];
+
+    float total = 0;
+    for (int i = 0; i < SAMPLE_SIZE; i++) {
+        total += adc_results[input * SAMPLE_SIZE + i];
+    }
+    total /= SAMPLE_SIZE;
+
+    uint8_t v = total * 127;
+
+    return v > 127 ? 127 : v < 0 ? 0 : v;
 }
