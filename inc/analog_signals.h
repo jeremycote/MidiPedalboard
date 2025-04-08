@@ -19,11 +19,7 @@ typedef enum {
 
 bool analog_init();
 
-bool analog_start_conversion(adc_input_t input);
-
-bool analog_conversion_complete();
-
-bool analog_read_conversion();
+bool analog_read(adc_input_t input);
 
 /**
  * Get adc value, converted to a range of 0...255

@@ -3,6 +3,7 @@
 #include "lwip/apps/mdns.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "buttons.h"
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
@@ -38,6 +39,13 @@ typedef struct {
     // Timestamp1
     uint32_t timestamps[6];
 } timestamp_packet_t;
+
+typedef struct {
+    uint16_t signature;
+    uint16_t command;
+    uint32_t ssrc;
+    uint32_t sequence_number;
+} feedback_packet_t;
 
 // TODO: What are these fields?
 typedef struct {
@@ -99,7 +107,8 @@ static struct sockaddr_in sender_addr;
 static socklen_t sender_len = sizeof(sender_addr);
 
 bool setup_wifi() {
-    if (cyw43_arch_init_with_country(CYW43_COUNTRY_CANADA)) {
+    printf("Init cyw43\n");
+    if (cyw43_arch_init_with_country(CYW43_COUNTRY_CANADA) != 0) {
         printf("Wi-Fi init failed\n");
         return false;
     }
@@ -199,8 +208,9 @@ bool setup_bonjour() {
 }
 
 // Helper function to get current timestamp in 100 microsecond units
+
 static uint64_t get_timestamp() {
-    absolute_time_t now = get_absolute_time();
+    absolute_time_t now = time_us_64();
     return to_us_since_boot(now) / 100;
 }
 
@@ -245,34 +255,74 @@ static void handle_invitation(int socket, exchange_packet_t* packet, struct sock
 
 // TODO: Better synchronization is required for a stable experience
 static void handle_clock(timestamp_packet_t* packet, struct sockaddr_in *sender_addr) {
-    printf("Handling clock\n");
+    uint8_t count = packet->count + 1;
 
-    uint8_t count = packet->count + 1 > 2 ? 2 : packet->count + 1;
-
-    if (count != 1) {
+    if (count == 0)
         return;
+
+    if (count == 1) {
+        // Send back local time
+        timestamp_packet_t response = {0};
+        response.signature = 0xFFFF;
+        response.command = htons(CMD_CLOCK);
+        response.ssrc = htonl(session.ssrc);
+        response.count = 1;
+        response.timestamps[0] = packet->timestamps[0];
+        response.timestamps[1] = packet->timestamps[1];
+        response.timestamps[2] = htonl(get_timestamp() >> 32);
+        response.timestamps[3] = htonl(get_timestamp());
+
+        sendto(session.midi_socket, &response, 36, 0,
+               (struct sockaddr*)sender_addr, sizeof(*sender_addr));
+    } else if (count == 2) {
+        // Send back local time
+        timestamp_packet_t response = {0};
+        response.signature = 0xFFFF;
+        response.command = htons(CMD_CLOCK);
+        response.ssrc = htonl(session.ssrc);
+        response.count = 2;
+        response.timestamps[0] = packet->timestamps[0];
+        response.timestamps[1] = packet->timestamps[1];
+        response.timestamps[2] = packet->timestamps[2];
+        response.timestamps[3] = packet->timestamps[3];
+        response.timestamps[4] = htonl(get_timestamp() >> 32);
+        response.timestamps[5] = htonl(get_timestamp());
+
+        sendto(session.midi_socket, &response, 36, 0,
+               (struct sockaddr*)sender_addr, sizeof(*sender_addr));
+    }
+}
+
+static void handle_feedback(feedback_packet_t* packet, struct sockaddr_in *sender_addr) {
+    printf("Handling feedback\n");
+
+    int32_t delta = ntohl(packet->sequence_number) - session.sequence_number_host;
+
+    if (session.sequence_number_delta <= delta) {
+        session.sequence_number_delta = 0;
+    } else {
+        session.sequence_number_delta -= delta;
     }
 
-    // Send back local time
-    timestamp_packet_t response = {0};
-    response.signature = 0xFFFF;
-    response.command = htons(CMD_CLOCK);
-    response.ssrc = htonl(session.ssrc);
-    response.count = 1;
-    response.timestamps[0] = packet->timestamps[0];
-    response.timestamps[1] = packet->timestamps[1];
-    response.timestamps[2] = htonl(get_timestamp() >> 32);
-    response.timestamps[3] = htonl(get_timestamp());
+    session.sequence_number_host = ntohs(packet->sequence_number);
+    printf("Sequence Number Host: %u\n", session.sequence_number_host);
 
-    sendto(session.midi_socket, &response, 36, 0,
+    feedback_packet_t response = {0};
+    response.signature = 0xFFFF;
+    response.command = htons(CMD_RECEIVER_FEEDBACK);
+    response.ssrc = htonl(session.ssrc);
+    response.sequence_number = htons(session.sequence_number_host + session.sequence_number_delta);
+
+
+    sendto(session.midi_socket, &response, 12, 0,
            (struct sockaddr*)sender_addr, sizeof(*sender_addr));
 }
 
 static void handle_exchange_packet(int socket, exchange_packet_t* packet) {
-    printf("Received exchange packet from %s:%d\n", inet_ntoa(sender_addr.sin_addr), ntohs(sender_addr.sin_port));
+//    printf("Received exchange packet from %s:%d\n", inet_ntoa(sender_addr.sin_addr), ntohs(sender_addr.sin_port));
 
     uint16_t command = ntohs(packet->command);
-    printf("Received command: %c%c\n", command >> 8, command);
+//    printf("Received command: %c%c\n", command >> 8, command);
 
     switch (command) {
         case CMD_INVITATION: {
@@ -284,6 +334,7 @@ static void handle_exchange_packet(int socket, exchange_packet_t* packet) {
             return;
         }
         case CMD_RECEIVER_FEEDBACK: {
+//            handle_feedback((feedback_packet_t*)packet, &sender_addr);
             return;
         }
         default: {
@@ -293,9 +344,22 @@ static void handle_exchange_packet(int socket, exchange_packet_t* packet) {
     }
 }
 
+void send_midi_resync() {
+    timestamp_packet_t response = {0};
+    response.signature = 0xFFFF;
+    response.command = htons(CMD_CLOCK);
+    response.ssrc = htonl(session.ssrc);
+    response.count = 0;
+    response.timestamps[0] = htonl(get_timestamp() >> 32);
+    response.timestamps[1] = htonl(get_timestamp());
+
+    sendto(session.midi_socket, &response, 36, 0,
+           (struct sockaddr*) &sender_addr, sizeof(sender_addr));
+}
+
 void send_midi_control_change(uint8_t control, uint8_t value) {
-    printf("Sending midi command.\n");
-    printf("Current time: %llu\n", get_timestamp());
+//    printf("Sending midi command.\n");
+//    printf("Current time: %llu\n", get_timestamp());
     uint8_t command[128];
 
     midi_packet_header_t *header = (midi_packet_header_t*)command;
@@ -360,11 +424,38 @@ void handle_incoming_packets() {
             midi_packet_header_t *header = (midi_packet_header_t*)buffer;
 
             // TODO: Handle wrap around
-            int32_t delta = ntohs(header->sequence_number) - session.sequence_number_host;
-            session.sequence_number_host = ntohs(header->sequence_number);
+//            int32_t delta = ntohs(header->sequence_number) - session.sequence_number_host;
+//            session.sequence_number_host = ntohs(header->sequence_number);
+//
+//            session.sequence_number_delta = delta > session.sequence_number_delta ? 0 : session.sequence_number_delta - delta;
 
-            session.sequence_number_delta = delta > session.sequence_number_delta ? 0 : session.sequence_number_delta - delta;
+//            printf("Updated sequence number from host: %d\n", session.sequence_number_host);
 
-            printf("Updated sequence number from host: %d\n", session.sequence_number_host);
+            midi_packet_command_section_t *command_section = (midi_packet_command_section_t*)(buffer + 12);
+            if (command_section->len < 3) {
+                printf("Recieved MIDI packet with command length %u\n", command_section->len);
+                return;
+            }
+
+            printf("Packet:\n");
+            for (int i = 0; i < 3; i++) {
+                printf("%02x ", *((uint8_t*)command_section + i));
+            }
+
+            printf("\n");
+
+            printf("Received Packet Size: %d\n", received);
+            printf("Command Section: 0x%02x\n", command_section->all);
+            printf("Received MIDI from host: %u %u %u\n", command_section->command_list[0], command_section->command_list[1], command_section->command_list[2]);
+
+            // Control Change received
+            if (command_section->command_list[0] == 0xB0 && command_section->command_list[1] >= 20 && command_section->command_list[1] <= 27) {
+                uint8_t led = command_section->command_list[1] - 20;
+                led_set(led, command_section->command_list[2] > 0);
+            }
         }
+}
+
+bool is_connected() {
+    return netif_is_link_up(cyw43_state.netif) && dhcp_supplied_address(cyw43_state.netif);
 }

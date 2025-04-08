@@ -10,7 +10,18 @@
 
 #include "analog_signals.h"
 
-#define ADC_TASK_STACK_SIZE 1024
+#include "pico/stdlib.h"
+#include <ssd1306.h>
+#include <stdio.h>
+#include "analog_signals.h"
+#include "../lib/pico-ssd1306/ssd1306.h"
+#include "communication.h"
+#include <stdio.h>
+#include <hardware/adc.h>
+
+#define DELAY 500 // in milliseconds
+
+#define ADC_TASK_STACK_SIZE 4096
 
 StaticTask_t adc_task_buffer;
 StackType_t adc_task_stack[ADC_TASK_STACK_SIZE];
@@ -19,57 +30,59 @@ _Noreturn void adc_task();
 
 void start_adc_task() {
     printf("Starting ADC Task\n");
-    TaskHandle_t task = xTaskCreateStatic(adc_task, "ADC", ADC_TASK_STACK_SIZE, NULL, 1, adc_task_stack,
+    TaskHandle_t task = xTaskCreateStatic(adc_task, "ADC", ADC_TASK_STACK_SIZE, NULL, 2, adc_task_stack,
                       &adc_task_buffer);
 
-    vTaskCoreAffinitySet(task, 0b10);
+//    vTaskCoreAffinitySet(task, 0b01);
 }
 
 _Noreturn void adc_task() {
+    analog_init();
 
-    while (!analog_init()) {
-        printf("Failed to initialize ADC\n");
-    }
+    ssd1306_t oled;
+    oled.external_vcc = false;
 
-    uint8_t timeout = 0;
-    adc_input_t current_input = ADC_IN0;
+    printf("Init screen\n");
+    bool res = ssd1306_init(&oled, 128, 32, 0x3C, i2c1);
 
-    while (1) {
-//        printf("Reading ADC %u\n", current_input);
+    char buffer[32];
 
-        while (!analog_start_conversion(current_input) && timeout++ < 3) {
-            vTaskDelay(5);
+    while (true) {
+        for (int i = 3; i < 6; i += 2) {
+            analog_read(i);
+            vTaskDelay(20);
         }
 
-        // The last two inputs are blocking, so skip these steps
-        if (current_input <= 3) {
-            if (timeout >= 3)
-                goto next;
 
-            timeout = 0;
-            vTaskDelay(1);
+        uint8_t sound = analog_get(ADC_IN5);
 
-            while (!analog_conversion_complete() && timeout++ < 10) {
-                vTaskDelay(5);
-            }
+        // Format string for OLED
+        snprintf(buffer, sizeof(buffer), "Sound level : %d", sound);
 
-            if (timeout >= 10)
-                goto next;
-
-            timeout = 0;
-            while (!analog_read_conversion() && timeout++ < 3) {
-                vTaskDelay(5);
-            }
-
-            if (timeout >= 3)
-                goto next;
+        // Clear, draw, and display on OLED
+        ssd1306_clear(&oled);
+        if (sound > 25) {
+            ssd1306_draw_string(&oled, 0, 2, 1.5, "SOUND WARNING");
+        } else {
+            ssd1306_draw_string(&oled, 0, 2, 1.5, "Sound good");
         }
 
-//        printf("ADC %u value: %u\n", current_input, analog_get(current_input));
+        ssd1306_draw_string(&oled, 0, 10, 1, buffer);
 
-        next:
-            timeout = 0;
-            current_input = (current_input + 1) % 6;
-            vTaskDelay(10);
+        ssd1306_draw_string(&oled, 0, 20, 1, is_connected() ? "Wifi Connected" : "No Wifi");
+
+        ssd1306_show(&oled);
+
+//        printf("ADC: %u\n", analog_get(2));
+
+//        printf(
+//                "ADC\n1) %u\n2) %u\n3) %u\n4) %u\n5) %u\n6) %u\n",
+//                analog_get(0),
+//                analog_get(1),
+//                analog_get(2),
+//                analog_get(3),
+//                analog_get(4),
+//                analog_get(5)
+//        );
     }
 }
